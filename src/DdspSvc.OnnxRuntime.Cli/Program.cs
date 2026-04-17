@@ -283,6 +283,7 @@ static RenderCliArgs ParseRenderArgs(string[] args) {
 
 static void RenderLongAudio(SvcRuntime runtime, string inputWav, string outputWav, RenderCliOptions options) {
     var wav = WaveFile.ReadMono16(inputWav);
+    var totalOutputSamples = GetResampledSampleCount(wav.Samples.Length, wav.SampleRate, runtime.VocoderConfig.SampleRate);
     var slicer = new AudioSlicer(
         wav.SampleRate,
         thresholdDb: options.SliceThresholdDb);
@@ -312,6 +313,7 @@ static void RenderLongAudio(SvcRuntime runtime, string inputWav, string outputWa
         Console.WriteLine($"{BuildProgressBar(i + 1, totalVoiced)} done {watch.Elapsed.TotalSeconds:F2}s");
     }
 
+    stitched = MatchLength(stitched, totalOutputSamples);
     WaveFile.WriteMono16(outputWav, stitched, runtime.VocoderConfig.SampleRate);
 }
 
@@ -486,6 +488,22 @@ static float[] CrossFade(float[] left, float[] right, int index) {
     if (right.Length > overlap) {
         Array.Copy(right, overlap, result, safeIndex + overlap, right.Length - overlap);
     }
+    return result;
+}
+
+static float[] MatchLength(float[] audio, int targetLength) {
+    if (targetLength <= 0) {
+        return [];
+    }
+    if (audio.Length == targetLength) {
+        return audio;
+    }
+    if (audio.Length > targetLength) {
+        return audio[..targetLength];
+    }
+
+    var result = new float[targetLength];
+    Array.Copy(audio, result, audio.Length);
     return result;
 }
 
