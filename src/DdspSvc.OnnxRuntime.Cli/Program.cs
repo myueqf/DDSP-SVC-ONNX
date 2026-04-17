@@ -333,6 +333,7 @@ static float[] RenderOversizedVoicedSlice(SvcRuntime runtime, float[] audio, int
     var overlapInputSamples = Math.Max(0, (int)Math.Round(options.OverlapSeconds * sampleRate));
     var outputSampleRate = runtime.VocoderConfig.SampleRate;
     var seamCrossfadeSamples = Math.Max(1, (int)Math.Round(options.SeamCrossfadeSeconds * outputSampleRate));
+    var cutSearchRadiusSamples = Math.Max(1, chunkInputSamples / 2);
 
     var stitched = Array.Empty<float>();
     var currentLength = 0;
@@ -340,7 +341,18 @@ static float[] RenderOversizedVoicedSlice(SvcRuntime runtime, float[] audio, int
     var offset = 0;
 
     while (offset < audio.Length) {
-        var mainLength = Math.Min(chunkInputSamples, audio.Length - offset);
+        var remainingInputSamples = audio.Length - offset;
+        var mainLength = Math.Min(chunkInputSamples, remainingInputSamples);
+        if (remainingInputSamples > chunkInputSamples) {
+            var targetCut = offset + chunkInputSamples;
+            var cut = FindWeakEnergyCut(
+                audio,
+                sampleRate,
+                targetCut,
+                offset + Math.Max(1, chunkInputSamples / 2),
+                Math.Min(audio.Length, targetCut + cutSearchRadiusSamples));
+            mainLength = Math.Max(1, cut - offset);
+        }
         var mainChunk = Slice(audio, offset, mainLength);
         var rightLength = Math.Min(overlapInputSamples, Math.Max(0, audio.Length - (offset + mainLength)));
         var rightContext = rightLength > 0
@@ -352,7 +364,7 @@ static float[] RenderOversizedVoicedSlice(SvcRuntime runtime, float[] audio, int
         var leftTrimOutputSamples = GetResampledSampleCount(leftContext.Length, sampleRate, outputSampleRate);
         var mainOutputSamples = GetResampledSampleCount(mainChunk.Length, sampleRate, outputSampleRate);
         var centered = SliceWithEdgePadding(rendered, leftTrimOutputSamples, mainOutputSamples);
-        stitched = AppendWithShortCrossfade(stitched, centered, ref currentLength, seamCrossfadeSamples);
+        stitched = AppendWithBoundaryFade(stitched, centered, ref currentLength, seamCrossfadeSamples);
 
         leftContext = overlapInputSamples > 0
             ? Tail(mainChunk, overlapInputSamples)
@@ -361,6 +373,51 @@ static float[] RenderOversizedVoicedSlice(SvcRuntime runtime, float[] audio, int
     }
 
     return stitched;
+}
+
+static int FindWeakEnergyCut(float[] audio, int sampleRate, int targetSample, int minSample, int maxSample) {
+    if (maxSample <= minSample) {
+        return Math.Clamp(targetSample, minSample, maxSample);
+    }
+
+    var hop = Math.Max(1, (int)Math.Round(sampleRate * 0.02));
+    var win = Math.Max(hop, Math.Min((int)Math.Round(sampleRate * 0.3), hop * 4));
+    var bestCut = Math.Clamp(targetSample, minSample, maxSample);
+    var bestEnergy = double.PositiveInfinity;
+
+    var frameStart = Math.Max(0, minSample / hop);
+    var frameEnd = Math.Max(frameStart, maxSample / hop);
+    for (var frame = frameStart; frame <= frameEnd; frame++) {
+        var center = frame * hop;
+        var energy = ComputeWindowEnergy(audio, center, win);
+        var distancePenalty = Math.Abs(center - targetSample) / (double)Math.Max(1, maxSample - minSample);
+        var score = energy + distancePenalty * 1e-6;
+        if (score < bestEnergy) {
+            bestEnergy = score;
+            bestCut = center;
+        }
+    }
+
+    return Math.Clamp(bestCut, minSample, maxSample);
+}
+
+static double ComputeWindowEnergy(float[] audio, int center, int windowSize) {
+    if (audio.Length == 0) {
+        return 0d;
+    }
+
+    var half = windowSize / 2;
+    var start = Math.Max(0, center - half);
+    var end = Math.Min(audio.Length, start + windowSize);
+    start = Math.Max(0, end - windowSize);
+
+    double sumSquares = 0d;
+    for (var i = start; i < end; i++) {
+        sumSquares += audio[i] * audio[i];
+    }
+
+    var count = Math.Max(1, end - start);
+    return sumSquares / count;
 }
 
 static float[] AppendAt(float[] existing, float[] clip, int startSample, ref int currentLength) {
@@ -379,22 +436,30 @@ static float[] AppendAt(float[] existing, float[] clip, int startSample, ref int
     return blended;
 }
 
-static float[] AppendWithShortCrossfade(float[] existing, float[] clip, ref int currentLength, int seamCrossfadeSamples) {
+static float[] AppendWithBoundaryFade(float[] existing, float[] clip, ref int currentLength, int seamFadeSamples) {
     if (existing.Length == 0) {
         currentLength = clip.Length;
         return (float[])clip.Clone();
     }
 
-    var overlap = Math.Min(Math.Min(existing.Length, clip.Length), seamCrossfadeSamples);
-    if (overlap <= 0) {
-        var concatenated = new float[existing.Length + clip.Length];
-        Array.Copy(existing, concatenated, existing.Length);
-        Array.Copy(clip, 0, concatenated, existing.Length, clip.Length);
-        currentLength += clip.Length;
-        return concatenated;
+    var result = new float[existing.Length + clip.Length];
+    Array.Copy(existing, result, existing.Length);
+
+    var blendedClip = (float[])clip.Clone();
+    var fade = Math.Min(Math.Min(existing.Length, blendedClip.Length), seamFadeSamples);
+    if (fade > 1) {
+        for (var i = 0; i < fade; i++) {
+            var t = i / (float)(fade - 1);
+            var fadeOut = 1f - t;
+            var fadeIn = t;
+            result[existing.Length - fade + i] *= fadeOut;
+            blendedClip[i] *= fadeIn;
+        }
     }
 
-    return AppendAt(existing, clip, currentLength - overlap, ref currentLength);
+    Array.Copy(blendedClip, 0, result, existing.Length, blendedClip.Length);
+    currentLength += blendedClip.Length;
+    return result;
 }
 
 static float[] CrossFade(float[] left, float[] right, int index) {
