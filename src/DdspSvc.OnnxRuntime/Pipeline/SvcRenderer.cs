@@ -99,7 +99,12 @@ public sealed class SvcRenderer {
             pipeline.VocoderConfig.SampleRate,
             totalFrames);
         if (baseSegments.Count == 0) {
-            baseSegments.Add(new Segment(0, totalFrames, 0, request.Audio.Length));
+            baseSegments.Add(new Segment(
+                0,
+                totalFrames,
+                0,
+                request.Audio.Length,
+                GetResampledSampleCount(request.Audio.Length, request.SampleRate, pipeline.VocoderConfig.SampleRate)));
         }
 
         var segments = new List<SvcSegmentConditioning>(baseSegments.Count);
@@ -108,16 +113,26 @@ public sealed class SvcRenderer {
             var inputEndSample = Math.Clamp(segment.InputEndSample, inputStartSample, request.Audio.Length);
             var segmentAudio = request.Audio[inputStartSample..inputEndSample];
             var units = pipeline.ExtractUnits(segmentAudio, request.SampleRate);
-            var availableFrames = new[] { units.Frames, segment.EndFrame - segment.StartFrame }.Min();
+            var segmentStartSample = segment.StartFrame * pipeline.Options.HopSize;
+            var targetSegmentSampleCount = Math.Min(
+                Math.Max(0, targetSampleCount - segmentStartSample),
+                GetResampledSampleCount(inputEndSample - inputStartSample, request.SampleRate, pipeline.VocoderConfig.SampleRate));
+            var targetSegmentFrames = GetFrameCount(targetSegmentSampleCount, pipeline.Options.HopSize);
+            var availableFrames = new[] {
+                units.Frames,
+                targetSegmentFrames,
+                totalFrames - segment.StartFrame,
+            }.Min();
             if (availableFrames <= 0 || segment.StartFrame + availableFrames > totalFrames) {
                 continue;
             }
+            var outputSampleCount = Math.Min(targetSampleCount, segmentStartSample + targetSegmentSampleCount);
 
             segments.Add(new SvcSegmentConditioning {
                 StartFrame = segment.StartFrame,
                 EndFrame = segment.StartFrame + availableFrames,
-                StartSample = segment.StartFrame * pipeline.Options.HopSize,
-                EndSample = Math.Min(targetSampleCount, (segment.StartFrame + availableFrames) * pipeline.Options.HopSize),
+                StartSample = segmentStartSample,
+                EndSample = outputSampleCount,
                 Units = new ContentUnitsResult {
                     Frames = availableFrames,
                     Channels = units.Channels,
@@ -173,9 +188,11 @@ public sealed class SvcRenderer {
             var melFrameMajor = MelProjection.FlattenToFrameMajor(melNormalized, ddsp.Frames, ddsp.MelBins);
             var melForVocoder = MelProjection.Denormalize(melFrameMajor, pipeline.VocoderConfig.MelBase);
             var vocoder = pipeline.VocoderInfer(melForVocoder, ddsp.Frames, ddsp.MelBins, inputPitch);
+            var segmentLength = Math.Max(0, segment.EndSample - segment.StartSample);
+            var segmentAudio = MatchSegmentLength(vocoder.Audio, segmentLength);
 
-            ApplyMaskSegment(vocoder.Audio, conditioning.VolumeMask, segment.StartSample);
-            result = Stitch(result, vocoder.Audio, segment.StartSample, ref currentLength);
+            ApplyMaskSegment(segmentAudio, conditioning.VolumeMask, segment.StartSample);
+            result = Stitch(result, segmentAudio, segment.StartSample, ref currentLength);
         }
 
         return new SvcInferenceResult {
@@ -199,14 +216,16 @@ public sealed class SvcRenderer {
             .Where(slice => !slice.IsSilence && slice.EndSample > slice.StartSample)
             .Select(slice => {
                 var startFrame = Math.Min(totalFrames, (int)(slice.StartSample / inputHopSize));
-                var endFrame = Math.Min(totalFrames, (int)(slice.EndSample / inputHopSize));
                 var inputStartSample = Math.Clamp((int)(startFrame * inputHopSize), 0, audio.Length);
-                var inputEndSample = Math.Clamp((int)(endFrame * inputHopSize), inputStartSample, audio.Length);
-                return new Segment(startFrame, endFrame, inputStartSample, inputEndSample);
+                var inputEndSample = Math.Clamp(slice.EndSample, inputStartSample, audio.Length);
+                var outputSampleCount = GetResampledSampleCount(inputEndSample - inputStartSample, inputSampleRate, targetSampleRate);
+                var endFrame = Math.Min(totalFrames, startFrame + GetFrameCount(outputSampleCount, pipeline.Options.HopSize));
+                return new Segment(startFrame, endFrame, inputStartSample, inputEndSample, outputSampleCount);
             })
             .Where(segment =>
                 segment.EndFrame > segment.StartFrame &&
-                segment.InputEndSample > segment.InputStartSample)
+                segment.InputEndSample > segment.InputStartSample &&
+                segment.OutputSampleCount > 0)
             .ToList();
     }
 
@@ -308,5 +327,26 @@ public sealed class SvcRenderer {
         return speakerMix.Select(value => value / sum).ToArray();
     }
 
-    private readonly record struct Segment(int StartFrame, int EndFrame, int InputStartSample, int InputEndSample);
+    private static float[] MatchSegmentLength(float[] audio, int targetLength) {
+        if (targetLength <= 0) {
+            return [];
+        }
+        if (audio.Length == targetLength) {
+            return audio;
+        }
+        if (audio.Length > targetLength) {
+            return audio[..targetLength];
+        }
+
+        var result = new float[targetLength];
+        Array.Copy(audio, result, audio.Length);
+        return result;
+    }
+
+    private readonly record struct Segment(
+        int StartFrame,
+        int EndFrame,
+        int InputStartSample,
+        int InputEndSample,
+        int OutputSampleCount);
 }
