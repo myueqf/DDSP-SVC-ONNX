@@ -13,7 +13,7 @@
 #### 下载模型～
 
 [rmvpe（Yxlllc）](https://github.com/yxlllc/RMVPE/releases/download/230917/rmvpe-onnx.zip)  
-[声码器（OpenVPI）](https://github.com/yxlllc/RMVPE/releases/download/230917/rmvpe-onnx.zip)
+[声码器（OpenVPI）](https://github.com/openvpi/vocoders/releases/download/pc-nsf-hifigan-44.1k-hop512-128bin-2025.02/pc_nsf_hifigan_44.1k_hop512_128bin_2025.02.zip)
 
 推荐的目录结构～
 ```text
