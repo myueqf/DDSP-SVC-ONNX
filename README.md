@@ -136,6 +136,70 @@ var hostPrepared = hostService.Prepare(new SvcHostRenderRequest {
 var hostResult = hostService.Render(hostPrepared);
 ```
 
+### 如何导出 ONNX ？
+
+准备工作：
+```bash
+# 克隆仓库
+git clone https://github.com/myueqf/DDSP-SVC.git
+
+# 安装依赖
+pip install -r requirements.txt
+```
+
+#### 导出 DDSP encoder / reflow velocity
+```bash
+python export_onnx.py -m <model_ckpt.pt> -o <output_dir>
+```
+
+这个脚本会输出：
+
+- `encoder.onnx`
+- `velocity.onnx`
+- `svc.json`
+
+常用附加参数：
+
+```bash
+python export_onnx.py -m <model_ckpt.pt> -o <output_dir> --skip-check
+python export_onnx.py -m <model_ckpt.pt> -o <output_dir> --check-steps 20
+```
+
+说明：
+
+- `--skip-check` 用于跳过导出后的 ONNXRuntime smoke check （如果你没装onnxruntime的话。。。）
+- `--check-steps` 用于控制 smoke check 时使用的 Euler 步数
+
+#### 导出 ContentVec ONNX
+
+普通的 `contentvec`：
+
+```bash
+python export_contentvec_onnx.py \
+  -m pretrain/contentvec/checkpoint_best_legacy_500.pt \
+  -o <output_dir>/contentvec.onnx \
+  --variant base
+```
+
+预导出 `tta2x` 的：
+
+```bash
+python export_contentvec_onnx.py \
+  -m pretrain/contentvec/checkpoint_best_legacy_500.pt \
+  -o <output_dir>/contentvec_tta2x.onnx \
+  --variant tta2x
+```
+
+脚本还支持：
+
+- `--opset 17`
+- `--metadata <path>`
+
+导出后会生成：
+
+- `contentvec.onnx` 或 `contentvec_tta2x.onnx`
+- 对应的 JSON sidecar，用于记录 `sample_rate / hop_size / opset / variant`
+
 ### 尚未实现的功能XwX
 
 - `formant_shift_key`
