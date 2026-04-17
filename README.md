@@ -10,6 +10,11 @@
 - 一个包含 encoder.onnx、velocity.onnx 和 svc.json 的 DDSP-SVC ONNX 导出目录
 - 依赖模型：contentvec、rmvpe 以及 pc_nsf_hifigan
 
+#### 下载模型～
+
+[rmvpe（Yxlllc）](https://github.com/yxlllc/RMVPE/releases/download/230917/rmvpe-onnx.zip)  
+[声码器（OpenVPI）](https://github.com/yxlllc/RMVPE/releases/download/230917/rmvpe-onnx.zip)
+
 推荐的目录结构～
 ```text
 ./Model/onnx/
