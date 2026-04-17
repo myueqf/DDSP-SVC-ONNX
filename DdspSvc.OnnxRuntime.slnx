@@ -1,0 +1,9 @@
+﻿<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/DdspSvc.OnnxRuntime.Cli/DdspSvc.OnnxRuntime.Cli.csproj" />
+    <Project Path="src/DdspSvc.OnnxRuntime/DdspSvc.OnnxRuntime.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/DdspSvc.OnnxRuntime.Tests/DdspSvc.OnnxRuntime.Tests.csproj" />
+  </Folder>
+</Solution>
