@@ -282,7 +282,11 @@ static RenderCliArgs ParseRenderArgs(string[] args) {
 }
 
 static void RenderLongAudio(SvcRuntime runtime, string inputWav, string outputWav, RenderCliOptions options) {
-    var wav = WaveFile.ReadMono16(inputWav);
+    using var preparedInput = PrepareInputAudio(inputWav);
+    if (preparedInput.UsedFfmpeg) {
+        Console.WriteLine("Using ffmpeg to normalize input audio to 16-bit PCM mono WAV.");
+    }
+    var wav = WaveFile.ReadMono16(preparedInput.Path);
     var totalOutputSamples = GetResampledSampleCount(wav.Samples.Length, wav.SampleRate, runtime.VocoderConfig.SampleRate);
     var slicer = new AudioSlicer(
         wav.SampleRate,
@@ -315,6 +319,82 @@ static void RenderLongAudio(SvcRuntime runtime, string inputWav, string outputWa
 
     stitched = MatchLength(stitched, totalOutputSamples);
     WaveFile.WriteMono16(outputWav, stitched, runtime.VocoderConfig.SampleRate);
+}
+
+static PreparedAudioInput PrepareInputAudio(string inputPath) {
+    if (TryFindExecutable("ffmpeg", out var ffmpegPath) && ffmpegPath is not null) {
+        var tempPath = Path.Combine(
+            Path.GetTempPath(),
+            $"ddspsvc-onnx-{Guid.NewGuid():N}.wav");
+        ConvertToPcmMonoWav(ffmpegPath, inputPath, tempPath);
+        return new PreparedAudioInput(tempPath, deleteOnDispose: true, usedFfmpeg: true);
+    }
+
+    try {
+        using var reader = WaveFile.OpenReader(inputPath);
+        return new PreparedAudioInput(inputPath, deleteOnDispose: false, usedFfmpeg: false);
+    } catch (Exception ex) when (ex is NotSupportedException || ex is InvalidDataException) {
+        throw new InvalidOperationException(
+            $"Failed to read input audio '{inputPath}'. Native input support is limited to 16-bit PCM WAV. " +
+            "Install ffmpeg to enable automatic decoding for mp3/flac/aac/m4a and other common formats.",
+            ex);
+    }
+}
+
+static void ConvertToPcmMonoWav(string ffmpegPath, string inputPath, string outputPath) {
+    Directory.CreateDirectory(Path.GetDirectoryName(outputPath) ?? ".");
+    var startInfo = new ProcessStartInfo {
+        FileName = ffmpegPath,
+        RedirectStandardError = true,
+        RedirectStandardOutput = true,
+        UseShellExecute = false,
+    };
+    startInfo.ArgumentList.Add("-y");
+    startInfo.ArgumentList.Add("-i");
+    startInfo.ArgumentList.Add(inputPath);
+    startInfo.ArgumentList.Add("-vn");
+    startInfo.ArgumentList.Add("-ac");
+    startInfo.ArgumentList.Add("1");
+    startInfo.ArgumentList.Add("-c:a");
+    startInfo.ArgumentList.Add("pcm_s16le");
+    startInfo.ArgumentList.Add("-f");
+    startInfo.ArgumentList.Add("wav");
+    startInfo.ArgumentList.Add(outputPath);
+
+    using var process = Process.Start(startInfo)
+        ?? throw new InvalidOperationException("Failed to start ffmpeg.");
+    var stderr = process.StandardError.ReadToEnd();
+    var stdout = process.StandardOutput.ReadToEnd();
+    process.WaitForExit();
+
+    if (process.ExitCode != 0 || !File.Exists(outputPath)) {
+        throw new InvalidOperationException(
+            $"ffmpeg failed to decode '{inputPath}' to 16-bit PCM mono WAV.{Environment.NewLine}{stderr}{stdout}".Trim());
+    }
+}
+
+static bool TryFindExecutable(string name, out string? path) {
+    path = null;
+    var pathValue = Environment.GetEnvironmentVariable("PATH");
+    if (string.IsNullOrWhiteSpace(pathValue)) {
+        return false;
+    }
+
+    var fileNames = OperatingSystem.IsWindows()
+        ? new[] { name + ".exe", name + ".cmd", name + ".bat", name }
+        : new[] { name };
+
+    foreach (var directory in pathValue.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)) {
+        foreach (var fileName in fileNames) {
+            var candidate = Path.Combine(directory, fileName);
+            if (File.Exists(candidate)) {
+                path = candidate;
+                return true;
+            }
+        }
+    }
+
+    return false;
 }
 
 static float[] RenderClip(SvcRuntime runtime, float[] audio, int sampleRate, RenderCliOptions options) {
@@ -691,3 +771,28 @@ internal sealed record RenderCliOptions(
     float? SilenceThresholdDb = -60f,
     int KeyShiftSemitones = 0,
     float[]? SpeakerMix = null);
+
+internal sealed class PreparedAudioInput : IDisposable {
+    public string Path { get; }
+    private readonly bool deleteOnDispose;
+    public bool UsedFfmpeg { get; }
+
+    public PreparedAudioInput(string path, bool deleteOnDispose, bool usedFfmpeg) {
+        Path = path;
+        this.deleteOnDispose = deleteOnDispose;
+        UsedFfmpeg = usedFfmpeg;
+    }
+
+    public void Dispose() {
+        if (!deleteOnDispose) {
+            return;
+        }
+
+        try {
+            if (File.Exists(Path)) {
+                File.Delete(Path);
+            }
+        } catch {
+        }
+    }
+}
