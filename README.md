@@ -64,7 +64,7 @@ dotnet ./src/DdspSvc.OnnxRuntime.Cli/bin/Debug/net8.0/DdspSvc.OnnxRuntime.Cli.dl
 
 - 解析到的依赖目录
 - `encoder / velocity / vocoder / rmvpe / contentvec` 实际路径
-- 从 `config.yaml` / `svc.json` 读到的运行参数
+- 从 `svc.json` 读取元数据（如果模型目录或其上一级存在 config.yaml，再额外读取部分默认参数作为补充）
 - 从 `vocoder.yaml` 读到的声码器配置
 
 ### 推理～
