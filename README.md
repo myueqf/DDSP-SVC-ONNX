@@ -3,10 +3,17 @@
 > [!WARNING]
 > **温馨提示：** 此项目含有一些llm生成的代码，如有任何不适（如：头昏脑胀，血压升高，心跳加速，并且伴随着口吐白沫，浑身抽搐）请立即删除本项目并尽快睡一觉忘掉这个项目XwX
 
+这是一个基于 .NET / ONNX Runtime 的 DDSP-SVC 推理实现，提供：
+
+- 友好的命令行推理
+- 可直接从 C# 调用的库接口
+
+当前主要面向导出的 DDSP-SVC ONNX 模型进行本地推理与集成。
+
 ### 构建和运行  
 要求：
 - .NET SDK 8.0 或更高版本
-- 用于 CLI 输入的 16 位 PCM WAV 文件
+- 用于 CLI 输入的任意人类干声（肯定有叭？）
 - 一个包含 encoder.onnx、velocity.onnx 和 svc.json 的 DDSP-SVC ONNX 导出目录
 - 依赖模型：contentvec、rmvpe 以及 pc_nsf_hifigan
 
@@ -212,3 +219,7 @@ python export_contentvec_onnx.py \
 
 这两个功能当前会明确报错，不会静默忽略。  
 （所以是真的不支持嗷QAQ）
+
+- `DirectML`
+
+恐怕永远不会做XwX（需要gpu加速或许可以去康康cuda分支。。？）
