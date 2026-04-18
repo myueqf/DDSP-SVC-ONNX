@@ -28,7 +28,7 @@ public sealed class SvcInferencePipeline : IDisposable {
         Options = options;
         ModelPaths = modelPaths;
         this.vocoderConfig = vocoderConfig;
-        this.sessionFactory = sessionFactory ?? new OnnxSessionFactory();
+        this.sessionFactory = sessionFactory ?? new OnnxSessionFactory(options);
         volumeExtractor = new VolumeExtractor(options.HopSize, options.WinSize);
         Capabilities = SvcRuntimeCapabilities.FromOptions(options);
     }

@@ -24,6 +24,8 @@ try {
         var options = factory.ResolveOptions(new SvcRuntimeOptions {
             ModelRoot = inspectArgs.ModelRoot,
             DependenciesRoot = inspectArgs.DependenciesRoot,
+            ExecutionProvider = inspectArgs.ExecutionProvider,
+            ExecutionDeviceId = inspectArgs.ExecutionDeviceId,
             DDspEncoderPath = inspectArgs.DDspEncoderPath,
             ReflowVelocityPath = inspectArgs.ReflowVelocityPath,
             VocoderPath = inspectArgs.VocoderPath,
@@ -44,6 +46,7 @@ try {
         Console.WriteLine($"  Content      : {paths.ContentEncoderPath}");
         Console.WriteLine();
         Console.WriteLine("Resolved options:");
+        Console.WriteLine($"  Device       : {options.ExecutionProvider} (id={options.ExecutionDeviceId})");
         Console.WriteLine($"  Encoder      : {options.ContentEncoder}");
         Console.WriteLine($"  Sample rate  : {options.SamplingRate}");
         Console.WriteLine($"  Hop size     : {options.HopSize}");
@@ -63,6 +66,8 @@ try {
         var options = factory.ResolveOptions(new SvcRuntimeOptions {
             ModelRoot = renderArgs.ModelRoot,
             DependenciesRoot = renderArgs.DependenciesRoot,
+            ExecutionProvider = renderArgs.ExecutionProvider,
+            ExecutionDeviceId = renderArgs.ExecutionDeviceId,
             DDspEncoderPath = renderArgs.DDspEncoderPath,
             ReflowVelocityPath = renderArgs.ReflowVelocityPath,
             VocoderPath = renderArgs.VocoderPath,
@@ -112,6 +117,8 @@ static void PrintUsage() {
     Console.WriteLine("  --threshold-db       -60");
     Console.WriteLine("  --seed               0");
     Console.WriteLine("  --key                0");
+    Console.WriteLine("  --device             cpu");
+    Console.WriteLine("  --device-id          0");
     Console.WriteLine("  --reflow-steps       model default");
     Console.WriteLine();
     Console.WriteLine("Notes:");
@@ -130,6 +137,8 @@ static InspectCliArgs ParseInspectArgs(string[] args) {
     string? vocoderPath = null;
     string? rmvpePath = null;
     string? contentvecPath = null;
+    var executionProvider = SvcExecutionProvider.Cpu;
+    var executionDeviceId = 0;
     var positional = new List<string>();
 
     for (var i = 0; i < args.Length; i++) {
@@ -154,6 +163,12 @@ static InspectCliArgs ParseInspectArgs(string[] args) {
                 break;
             case "--contentvec-path":
                 contentvecPath = ParsePath(args, ref i, "--contentvec-path");
+                break;
+            case "--device":
+                executionProvider = ParseExecutionProvider(args, ref i, "--device");
+                break;
+            case "--device-id":
+                executionDeviceId = ParseNonNegativeInt(args, ref i, "--device-id");
                 break;
             default:
                 positional.Add(args[i]);
@@ -175,6 +190,8 @@ static InspectCliArgs ParseInspectArgs(string[] args) {
     return new InspectCliArgs(
         ModelRoot: modelRoot ?? GetDefaultModelRoot(),
         DependenciesRoot: dependenciesRoot ?? GetDefaultDependenciesRoot(),
+        ExecutionProvider: executionProvider,
+        ExecutionDeviceId: executionDeviceId,
         DDspEncoderPath: encoderPath,
         ReflowVelocityPath: velocityPath,
         VocoderPath: vocoderPath,
@@ -191,6 +208,8 @@ static RenderCliArgs ParseRenderArgs(string[] args) {
     string? vocoderPath = null;
     string? rmvpePath = null;
     string? contentvecPath = null;
+    var executionProvider = SvcExecutionProvider.Cpu;
+    var executionDeviceId = 0;
     var positional = new List<string>();
 
     for (var i = 0; i < args.Length; i++) {
@@ -215,6 +234,12 @@ static RenderCliArgs ParseRenderArgs(string[] args) {
                 break;
             case "--contentvec-path":
                 contentvecPath = ParsePath(args, ref i, "--contentvec-path");
+                break;
+            case "--device":
+                executionProvider = ParseExecutionProvider(args, ref i, "--device");
+                break;
+            case "--device-id":
+                executionDeviceId = ParseNonNegativeInt(args, ref i, "--device-id");
                 break;
             case "--chunk-seconds":
                 options = options with { ChunkSeconds = ParsePositiveFloat(args, ref i, "--chunk-seconds") };
@@ -271,6 +296,8 @@ static RenderCliArgs ParseRenderArgs(string[] args) {
     return new RenderCliArgs(
         ModelRoot: modelRoot ?? GetDefaultModelRoot(),
         DependenciesRoot: dependenciesRoot ?? GetDefaultDependenciesRoot(),
+        ExecutionProvider: executionProvider,
+        ExecutionDeviceId: executionDeviceId,
         DDspEncoderPath: encoderPath,
         ReflowVelocityPath: velocityPath,
         VocoderPath: vocoderPath,
@@ -717,6 +744,26 @@ static int ParsePositiveInt(string[] args, ref int index, string option) {
     return value;
 }
 
+static int ParseNonNegativeInt(string[] args, ref int index, string option) {
+    var value = ParseInt(args, ref index, option);
+    if (value < 0) {
+        throw new ArgumentException($"{option} must be non-negative.");
+    }
+    return value;
+}
+
+static SvcExecutionProvider ParseExecutionProvider(string[] args, ref int index, string option) {
+    if (index + 1 >= args.Length) {
+        throw new ArgumentException($"Missing provider value for {option}.");
+    }
+    index++;
+    return args[index].ToLowerInvariant() switch {
+        "cpu" => SvcExecutionProvider.Cpu,
+        "cuda" => SvcExecutionProvider.Cuda,
+        _ => throw new ArgumentException($"{option} must be one of: cpu, cuda."),
+    };
+}
+
 static float[] ParseSpeakerMix(string[] args, ref int index, string option) {
     if (index + 1 >= args.Length) {
         throw new ArgumentException($"Missing value for {option}.");
@@ -743,6 +790,8 @@ static string GetDefaultDependenciesRoot() => Path.GetFullPath(Path.Combine(Dire
 internal sealed record InspectCliArgs(
     string ModelRoot,
     string DependenciesRoot,
+    SvcExecutionProvider ExecutionProvider,
+    int ExecutionDeviceId,
     string? DDspEncoderPath,
     string? ReflowVelocityPath,
     string? VocoderPath,
@@ -752,6 +801,8 @@ internal sealed record InspectCliArgs(
 internal sealed record RenderCliArgs(
     string ModelRoot,
     string DependenciesRoot,
+    SvcExecutionProvider ExecutionProvider,
+    int ExecutionDeviceId,
     string? DDspEncoderPath,
     string? ReflowVelocityPath,
     string? VocoderPath,

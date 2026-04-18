@@ -153,6 +153,8 @@ model:
             var resolved = factory.ResolveOptions(new SvcRuntimeOptions { ModelRoot = onnxRoot });
 
             Assert.Equal(ContentEncoderKind.ContentVec768L12Tta2x, resolved.ContentEncoder);
+            Assert.Equal(SvcExecutionProvider.Cpu, resolved.ExecutionProvider);
+            Assert.Equal(0, resolved.ExecutionDeviceId);
             Assert.Equal(512, resolved.HopSize);
             Assert.Equal(1024, resolved.WinSize);
             Assert.Equal(50, resolved.ReflowSteps);
@@ -233,6 +235,20 @@ pitch_controllable: true
         } finally {
             Directory.Delete(root, recursive: true);
         }
+    }
+
+    [Fact]
+    public void ResolveOptions_PreservesExecutionProviderSelection() {
+        var factory = new SvcPipelineFactory();
+
+        var resolved = factory.ResolveOptions(new SvcRuntimeOptions {
+            ModelRoot = "/tmp/nonexistent",
+            ExecutionProvider = SvcExecutionProvider.Cuda,
+            ExecutionDeviceId = 2,
+        });
+
+        Assert.Equal(SvcExecutionProvider.Cuda, resolved.ExecutionProvider);
+        Assert.Equal(2, resolved.ExecutionDeviceId);
     }
 
     [Fact]

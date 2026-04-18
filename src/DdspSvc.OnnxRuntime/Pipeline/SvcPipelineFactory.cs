@@ -27,6 +27,8 @@ public sealed class SvcPipelineFactory {
         return new SvcRuntimeOptions {
             ModelRoot = options.ModelRoot,
             DependenciesRoot = options.DependenciesRoot,
+            ExecutionProvider = options.ExecutionProvider,
+            ExecutionDeviceId = options.ExecutionDeviceId,
             DDspEncoderPath = options.DDspEncoderPath,
             ReflowVelocityPath = options.ReflowVelocityPath,
             VocoderPath = options.VocoderPath,

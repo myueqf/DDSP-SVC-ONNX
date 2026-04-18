@@ -3,6 +3,8 @@
 public sealed class SvcRuntimeOptions {
     public string ModelRoot { get; init; } = string.Empty;
     public string? DependenciesRoot { get; init; }
+    public SvcExecutionProvider ExecutionProvider { get; init; } = SvcExecutionProvider.Cpu;
+    public int ExecutionDeviceId { get; init; }
     public string? DDspEncoderPath { get; init; }
     public string? ReflowVelocityPath { get; init; }
     public string? VocoderPath { get; init; }
