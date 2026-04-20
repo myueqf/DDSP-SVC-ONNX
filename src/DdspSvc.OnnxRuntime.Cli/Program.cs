@@ -341,7 +341,14 @@ static void RenderLongAudio(SvcRuntime runtime, string inputWav, string outputWa
 
         var startOutputSample = GetResampledSampleCount(slice.StartSample, wav.SampleRate, runtime.VocoderConfig.SampleRate);
         stitched = AppendAt(stitched, output, startOutputSample, ref currentLength);
-        Console.WriteLine($"{BuildProgressBar(i + 1, totalVoiced)} done {watch.Elapsed.TotalSeconds:F2}s");
+        if (i == totalVoiced - 1)
+        {
+            Console.WriteLine($"{BuildProgressBar(i + 1, totalVoiced)} all done {watch.Elapsed.TotalSeconds:F2}s");
+        }
+        else
+        {
+            Console.WriteLine($"done {watch.Elapsed.TotalSeconds:F2}s");
+        }
     }
 
     stitched = MatchLength(stitched, totalOutputSamples);
