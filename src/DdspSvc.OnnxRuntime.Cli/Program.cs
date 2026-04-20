@@ -370,7 +370,7 @@ static PreparedAudioInput PrepareInputAudio(string inputPath) {
     } catch (Exception ex) when (ex is NotSupportedException || ex is InvalidDataException) {
         throw new InvalidOperationException(
             $"Failed to read input audio '{inputPath}'. Native input support is limited to 16-bit PCM WAV. " +
-            "Install ffmpeg to enable automatic decoding for mp3/flac/aac/m4a and other common formats.",
+            "Install ffmpeg to enable automatic decoding for mp3/flac/m4a and other common formats.",
             ex);
     }
 }
